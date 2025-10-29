@@ -2,33 +2,121 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { createRequestHandler } from "react-router";
 
-// Types for Todo items
-type Todo = {
+// Types for Water Tanker Trucks (Beczkowozy)
+type Product = {
   id: string;
-  title: string;
-  completed: boolean;
-  createdAt: string;
+  name: string;
+  capacity: number; // in liters
+  price: number; // in PLN
+  description: string;
+  specs: {
+    material: string;
+    pumpType: string;
+    chassis: string;
+    weight: number;
+  };
+  category: "light" | "medium" | "heavy";
+  image: string;
+  inStock: boolean;
 };
 
-// In-memory storage (in production, use D1, KV, or Durable Objects)
-let todos: Todo[] = [
+type CartItem = {
+  productId: string;
+  quantity: number;
+};
+
+// Sample products - Water Tanker Trucks
+const products: Product[] = [
   {
     id: "1",
-    title: "Welcome to your Todo App",
-    completed: false,
-    createdAt: new Date().toISOString(),
+    name: "AquaTrans 3000",
+    capacity: 3000,
+    price: 125000,
+    description: "Kompaktowy beczkowóz idealny do małych i średnich gospodarstw. Solidna konstrukcja, łatwy w obsłudze.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 300 l/min",
+      chassis: "Mercedes Sprinter",
+      weight: 2500,
+    },
+    category: "light",
+    image: "/images/tanker-light.jpg",
+    inStock: true,
   },
   {
     id: "2",
-    title: "Built with React Router + Hono + Cloudflare Workers",
-    completed: false,
-    createdAt: new Date().toISOString(),
+    name: "AquaTrans 5000 Pro",
+    capacity: 5000,
+    price: 185000,
+    description: "Średni beczkowóz z profesjonalnym wyposażeniem. Idealny do zaopatrzenia budów i większych gospodarstw.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 450 l/min",
+      chassis: "MAN TGL",
+      weight: 4200,
+    },
+    category: "medium",
+    inStock: true,
   },
   {
     id: "3",
-    title: "Try adding a new task",
-    completed: true,
-    createdAt: new Date().toISOString(),
+    name: "AquaTrans 8000 Heavy",
+    capacity: 8000,
+    price: 285000,
+    description: "Ciężki beczkowóz przemysłowy. Największa wydajność dla wymagających projektów.",
+    specs: {
+      material: "Stal nierdzewna wzmocniona",
+      pumpType: "Pompa wirowa 600 l/min",
+      chassis: "Scania P280",
+      weight: 6800,
+    },
+    category: "heavy",
+    inStock: true,
+  },
+  {
+    id: "4",
+    name: "AquaTrans 6000 EcoLine",
+    capacity: 6000,
+    price: 215000,
+    description: "Ekonomiczny model z doskonałym stosunkiem ceny do jakości. Niezawodny i oszczędny.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 400 l/min",
+      chassis: "Iveco Eurocargo",
+      weight: 5000,
+    },
+    category: "medium",
+    inStock: true,
+  },
+  {
+    id: "5",
+    name: "AquaTrans 10000 Industrial",
+    capacity: 10000,
+    price: 385000,
+    description: "Największy model w ofercie. Dla profesjonalistów i dużych przedsiębiorstw. Maksymalna pojemność i wydajność.",
+    specs: {
+      material: "Stal nierdzewna premium",
+      pumpType: "Pompa wirowa 800 l/min",
+      chassis: "Volvo FH16",
+      weight: 8500,
+    },
+    category: "heavy",
+    inStock: true,
+  },
+  {
+    id: "6",
+    name: "AquaTrans 4000 Compact",
+    capacity: 4000,
+    price: 155000,
+    description: "Kompaktowy wymiary przy dużej pojemności. Świetny do pracy w trudno dostępnych miejscach.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 350 l/min",
+      chassis: "Fiat Ducato",
+      weight: 3200,
+    },
+    category: "light",
+    inStock: false,
   },
 ];
 
@@ -37,60 +125,57 @@ const app = new Hono();
 // Enable CORS for API routes
 app.use("/api/*", cors());
 
-// API Routes
-app.get("/api/todos", (c) => {
-  return c.json({ todos });
-});
+// API Routes - Products
+app.get("/api/products", (c) => {
+  const category = c.req.query("category");
+  const inStock = c.req.query("inStock");
 
-app.post("/api/todos", async (c) => {
-  const body = await c.req.json<{ title: string }>();
+  let filteredProducts = [...products];
 
-  if (!body.title || body.title.trim() === "") {
-    return c.json({ error: "Title is required" }, 400);
+  if (category && category !== "all") {
+    filteredProducts = filteredProducts.filter((p) => p.category === category);
   }
 
-  const newTodo: Todo = {
-    id: crypto.randomUUID(),
-    title: body.title,
-    completed: false,
-    createdAt: new Date().toISOString(),
-  };
+  if (inStock === "true") {
+    filteredProducts = filteredProducts.filter((p) => p.inStock);
+  }
 
-  todos.push(newTodo);
-  return c.json({ todo: newTodo }, 201);
+  return c.json({ products: filteredProducts });
 });
 
-app.patch("/api/todos/:id", async (c) => {
+app.get("/api/products/:id", (c) => {
   const id = c.req.param("id");
-  const body = await c.req.json<{ completed?: boolean; title?: string }>();
+  const product = products.find((p) => p.id === id);
 
-  const todoIndex = todos.findIndex((t) => t.id === id);
-
-  if (todoIndex === -1) {
-    return c.json({ error: "Todo not found" }, 404);
+  if (!product) {
+    return c.json({ error: "Product not found" }, 404);
   }
 
-  if (body.completed !== undefined) {
-    todos[todoIndex].completed = body.completed;
-  }
-
-  if (body.title !== undefined) {
-    todos[todoIndex].title = body.title;
-  }
-
-  return c.json({ todo: todos[todoIndex] });
+  return c.json({ product });
 });
 
-app.delete("/api/todos/:id", (c) => {
-  const id = c.req.param("id");
-  const todoIndex = todos.findIndex((t) => t.id === id);
+// Contact/Inquiry endpoint
+app.post("/api/inquiry", async (c) => {
+  const body = await c.req.json<{
+    name: string;
+    email: string;
+    phone: string;
+    productId: string;
+    message: string;
+  }>();
 
-  if (todoIndex === -1) {
-    return c.json({ error: "Todo not found" }, 404);
+  // Validate required fields
+  if (!body.name || !body.email || !body.productId) {
+    return c.json({ error: "Name, email, and product are required" }, 400);
   }
 
-  todos.splice(todoIndex, 1);
-  return c.json({ success: true });
+  // In production, send email or save to database
+  console.log("New inquiry:", body);
+
+  return c.json({
+    success: true,
+    message: "Dziękujemy za zapytanie! Skontaktujemy się w ciągu 24h.",
+  });
 });
 
 // React Router handler for all other routes
