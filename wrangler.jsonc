@@ -7,8 +7,16 @@
   "compatibility_date": "2025-06-17",
   "main": "./workers/app.ts",
   "vars": {
-    "VALUE_FROM_CLOUDFLARE": "Hello from Hono/CF"
+    "VALUE_FROM_CLOUDFLARE": "Hello from Hono/CF",
+    "ADMIN_API_KEY": "your-secret-admin-key-change-in-production"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "aquatrans-db",
+      "database_id": "placeholder-will-be-created-on-deploy"
+    }
+  ],
   "observability": {
     "enabled": true
   },

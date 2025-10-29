@@ -1,15 +1,36 @@
 import { useState } from "react";
 import type { Route } from "./+types/products";
 import { Navbar } from "@/components/navbar";
+import { Footer } from "@/components/footer";
 import { ProductCard } from "@/components/product-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Product } from "@/types/product";
+import { generateMetaTags, generateOrganizationSchema } from "@/lib/seo";
 
-export function meta({}: Route.MetaArgs) {
+export function meta({ data }: Route.MetaArgs) {
+  const url = typeof window !== "undefined" ? window.location.origin : "https://aquatrans.pl";
+
+  return generateMetaTags(
+    {
+      title: "Katalog Beczkowozów",
+      description:
+        "Profesjonalne beczkowozy do wody pitnej. Szeroki wybór modeli od 3000L do 10000L. Solidne konstrukcje, konkurencyjne ceny.",
+      keywords:
+        "beczkowozy, beczkowóz na wodę, cysterny do wody, pojazdy do transportu wody, beczkowozy cena",
+      ogType: "website",
+    },
+    url
+  );
+}
+
+export function links() {
   return [
-    { title: "Katalog Beczkowozów - AquaTrans" },
-    { name: "description", content: "Profesjonalne beczkowozy do wody pitnej. Szeroki wybór modeli." },
+    {
+      tagName: "script",
+      type: "application/ld+json",
+      children: JSON.stringify(generateOrganizationSchema()),
+    },
   ];
 }
 
@@ -125,6 +146,7 @@ export default function Products({ loaderData }: Route.ComponentProps) {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

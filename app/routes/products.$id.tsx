@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Route } from "./+types/products.$id";
 import { Navbar } from "@/components/navbar";
+import { Footer } from "@/components/footer";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,11 +9,38 @@ import { Badge } from "@/components/ui/badge";
 import { Droplets, Gauge, Weight, Package, Truck, CheckCircle2, Mail, Phone, User, MessageSquare } from "lucide-react";
 import type { Product } from "@/types/product";
 import { Link } from "react-router";
+import { generateMetaTags, generateProductSchema } from "@/lib/seo";
 
-export function meta({ params }: Route.MetaArgs) {
+export function meta({ data }: Route.MetaArgs) {
+  if (!data?.product) {
+    return [{ title: "Produkt nie znaleziony - AquaTrans" }];
+  }
+
+  const { product } = data;
+  const url = typeof window !== "undefined" ? window.location.href : "https://aquatrans.pl";
+
+  return generateMetaTags(
+    {
+      title: product.name,
+      description: product.description,
+      keywords: `${product.name}, beczkowóz ${product.capacity}L, ${product.specs.chassis}, cena beczkowozu`,
+      ogType: "product",
+    },
+    url
+  );
+}
+
+export function links({ data }: Route.LinksArgs) {
+  if (!data?.product) return [];
+
+  const url = typeof window !== "undefined" ? window.location.href : "https://aquatrans.pl";
+
   return [
-    { title: `Produkt ${params.id} - AquaTrans` },
-    { name: "description", content: "Szczegóły beczkowozu" },
+    {
+      tagName: "script",
+      type: "application/ld+json",
+      children: JSON.stringify(generateProductSchema(data.product, url)),
+    },
   ];
 }
 
@@ -252,6 +280,7 @@ export default function ProductDetail({ loaderData }: Route.ComponentProps) {
           </div>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }
