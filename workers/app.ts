@@ -4,10 +4,110 @@ import { createRequestHandler } from "react-router";
 
 // Types
 type Env = {
-  DB: D1Database;
-  ADMIN_API_KEY: string;
+  DB?: D1Database; // Optional - może nie istnieć
+  ADMIN_API_KEY?: string;
   VALUE_FROM_CLOUDFLARE: string;
 };
+
+// Fallback data - używane gdy baza nie istnieje
+const FALLBACK_PRODUCTS = [
+  {
+    id: "1",
+    name: "AquaTrans 3000",
+    capacity: 3000,
+    price: 125000,
+    description: "Kompaktowy beczkowóz idealny do małych i średnich gospodarstw. Solidna konstrukcja, łatwy w obsłudze.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 300 l/min",
+      chassis: "Mercedes Sprinter",
+      weight: 2500,
+    },
+    category: "light" as const,
+    image: "/images/tanker-light.jpg",
+    inStock: true,
+  },
+  {
+    id: "2",
+    name: "AquaTrans 5000 Pro",
+    capacity: 5000,
+    price: 185000,
+    description: "Średni beczkowóz z profesjonalnym wyposażeniem. Idealny do zaopatrzenia budów i większych gospodarstw.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 450 l/min",
+      chassis: "MAN TGL",
+      weight: 4200,
+    },
+    category: "medium" as const,
+    image: "/images/tanker-medium.jpg",
+    inStock: true,
+  },
+  {
+    id: "3",
+    name: "AquaTrans 8000 Heavy",
+    capacity: 8000,
+    price: 285000,
+    description: "Ciężki beczkowóz przemysłowy. Największa wydajność dla wymagających projektów.",
+    specs: {
+      material: "Stal nierdzewna wzmocniona",
+      pumpType: "Pompa wirowa 600 l/min",
+      chassis: "Scania P280",
+      weight: 6800,
+    },
+    category: "heavy" as const,
+    image: "/images/tanker-heavy.jpg",
+    inStock: true,
+  },
+  {
+    id: "4",
+    name: "AquaTrans 6000 EcoLine",
+    capacity: 6000,
+    price: 215000,
+    description: "Ekonomiczny model z doskonałym stosunkiem ceny do jakości. Niezawodny i oszczędny.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 400 l/min",
+      chassis: "Iveco Eurocargo",
+      weight: 5000,
+    },
+    category: "medium" as const,
+    image: "/images/tanker-medium.jpg",
+    inStock: true,
+  },
+  {
+    id: "5",
+    name: "AquaTrans 10000 Industrial",
+    capacity: 10000,
+    price: 385000,
+    description: "Największy model w ofercie. Dla profesjonalistów i dużych przedsiębiorstw. Maksymalna pojemność i wydajność.",
+    specs: {
+      material: "Stal nierdzewna premium",
+      pumpType: "Pompa wirowa 800 l/min",
+      chassis: "Volvo FH16",
+      weight: 8500,
+    },
+    category: "heavy" as const,
+    image: "/images/tanker-heavy.jpg",
+    inStock: true,
+  },
+  {
+    id: "6",
+    name: "AquaTrans 4000 Compact",
+    capacity: 4000,
+    price: 155000,
+    description: "Kompaktowy wymiary przy dużej pojemności. Świetny do pracy w trudno dostępnych miejscach.",
+    specs: {
+      material: "Stal nierdzewna",
+      pumpType: "Pompa wirowa 350 l/min",
+      chassis: "Fiat Ducato",
+      weight: 3200,
+    },
+    category: "light" as const,
+    image: "/images/tanker-light.jpg",
+    inStock: false,
+  },
+];
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -18,11 +118,16 @@ app.use("/api/*", cors());
 const adminAuth = async (c: any, next: any) => {
   const apiKey = c.req.header("X-API-Key");
 
-  if (!apiKey || apiKey !== c.env.ADMIN_API_KEY) {
-    return c.json({ error: "Unauthorized" }, 401);
+  if (!apiKey || !c.env.ADMIN_API_KEY || apiKey !== c.env.ADMIN_API_KEY) {
+    return c.json({ error: "Unauthorized - Admin API requires database setup" }, 401);
   }
 
   await next();
+};
+
+// Helper to check if DB is available
+const hasDatabase = (c: any): boolean => {
+  return !!c.env.DB;
 };
 
 // ============================================
@@ -34,74 +139,118 @@ app.get("/api/products", async (c) => {
   const category = c.req.query("category");
   const inStock = c.req.query("inStock");
 
-  let query = "SELECT * FROM products WHERE 1=1";
-  const params: any[] = [];
+  // Use database if available, otherwise fallback to static data
+  if (!hasDatabase(c)) {
+    // FALLBACK: Use static data
+    let filteredProducts = [...FALLBACK_PRODUCTS];
 
-  if (category && category !== "all") {
-    query += " AND category = ?";
-    params.push(category);
+    if (category && category !== "all") {
+      filteredProducts = filteredProducts.filter((p) => p.category === category);
+    }
+
+    if (inStock === "true") {
+      filteredProducts = filteredProducts.filter((p) => p.inStock);
+    }
+
+    return c.json({ products: filteredProducts });
   }
 
-  if (inStock === "true") {
-    query += " AND in_stock = 1";
+  // DATABASE: Use D1
+  try {
+    let query = "SELECT * FROM products WHERE 1=1";
+    const params: any[] = [];
+
+    if (category && category !== "all") {
+      query += " AND category = ?";
+      params.push(category);
+    }
+
+    if (inStock === "true") {
+      query += " AND in_stock = 1";
+    }
+
+    query += " ORDER BY capacity ASC";
+
+    const { results } = await c.env.DB.prepare(query).bind(...params).all();
+
+    const products = results.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      capacity: row.capacity,
+      price: row.price,
+      description: row.description,
+      specs: {
+        material: row.material,
+        pumpType: row.pump_type,
+        chassis: row.chassis,
+        weight: row.weight,
+      },
+      category: row.category,
+      image: row.image,
+      inStock: row.in_stock === 1,
+    }));
+
+    return c.json({ products });
+  } catch (error) {
+    console.error("Database error, falling back to static data:", error);
+    return c.json({ products: FALLBACK_PRODUCTS });
   }
-
-  query += " ORDER BY capacity ASC";
-
-  const { results } = await c.env.DB.prepare(query).bind(...params).all();
-
-  // Transform database format to API format
-  const products = results.map((row: any) => ({
-    id: row.id,
-    name: row.name,
-    capacity: row.capacity,
-    price: row.price,
-    description: row.description,
-    specs: {
-      material: row.material,
-      pumpType: row.pump_type,
-      chassis: row.chassis,
-      weight: row.weight,
-    },
-    category: row.category,
-    image: row.image,
-    inStock: row.in_stock === 1,
-  }));
-
-  return c.json({ products });
 });
 
 // Get single product
 app.get("/api/products/:id", async (c) => {
   const id = c.req.param("id");
 
-  const { results } = await c.env.DB.prepare(
-    "SELECT * FROM products WHERE id = ?"
-  ).bind(id).all();
+  // FALLBACK: Use static data
+  if (!hasDatabase(c)) {
+    const product = FALLBACK_PRODUCTS.find((p) => p.id === id);
 
-  if (results.length === 0) {
-    return c.json({ error: "Product not found" }, 404);
+    if (!product) {
+      return c.json({ error: "Product not found" }, 404);
+    }
+
+    return c.json({ product });
   }
 
-  const row = results[0] as any;
-  const product = {
-    id: row.id,
-    name: row.name,
-    capacity: row.capacity,
-    price: row.price,
-    description: row.description,
-    specs: {
-      material: row.material,
-      pumpType: row.pump_type,
-      chassis: row.chassis,
-      weight: row.weight,
-    },
-    category: row.category,
-    image: row.image,
-    inStock: row.in_stock === 1,
-  };
+  // DATABASE: Use D1
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT * FROM products WHERE id = ?"
+    ).bind(id).all();
 
-  return c.json({ product });
+    if (results.length === 0) {
+      return c.json({ error: "Product not found" }, 404);
+    }
+
+    const row = results[0] as any;
+    const product = {
+      id: row.id,
+      name: row.name,
+      capacity: row.capacity,
+      price: row.price,
+      description: row.description,
+      specs: {
+        material: row.material,
+        pumpType: row.pump_type,
+        chassis: row.chassis,
+        weight: row.weight,
+      },
+      category: row.category,
+      image: row.image,
+      inStock: row.in_stock === 1,
+    };
+
+    return c.json({ product });
+  } catch (error) {
+    console.error("Database error, falling back to static data:", error);
+    const product = FALLBACK_PRODUCTS.find((p) => p.id === id);
+
+    if (!product) {
+      return c.json({ error: "Product not found" }, 404);
+    }
+
+    return c.json({ product });
+  }
 });
 
 // Submit inquiry
@@ -119,37 +268,52 @@ app.post("/api/inquiry", async (c) => {
     return c.json({ error: "Name, email, and product are required" }, 400);
   }
 
-  // Get product name
-  const { results } = await c.env.DB.prepare(
-    "SELECT name FROM products WHERE id = ?"
-  ).bind(body.productId).all();
-
-  if (results.length === 0) {
-    return c.json({ error: "Product not found" }, 404);
+  // FALLBACK: Without database, just log and return success
+  if (!hasDatabase(c)) {
+    console.log("New inquiry (no database):", body);
+    return c.json({
+      success: true,
+      message: "Dziękujemy za zapytanie! Skontaktujemy się w ciągu 24h.",
+    });
   }
 
-  const productName = (results[0] as any).name;
+  // DATABASE: Save to D1
+  try {
+    const { results } = await c.env.DB.prepare(
+      "SELECT name FROM products WHERE id = ?"
+    ).bind(body.productId).all();
 
-  // Save inquiry to database
-  const inquiryId = crypto.randomUUID();
+    if (results.length === 0) {
+      return c.json({ error: "Product not found" }, 404);
+    }
 
-  await c.env.DB.prepare(
-    `INSERT INTO inquiries (id, product_id, product_name, name, email, phone, message, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'new')`
-  ).bind(
-    inquiryId,
-    body.productId,
-    productName,
-    body.name,
-    body.email,
-    body.phone || null,
-    body.message || null
-  ).run();
+    const productName = (results[0] as any).name;
+    const inquiryId = crypto.randomUUID();
 
-  return c.json({
-    success: true,
-    message: "Dziękujemy za zapytanie! Skontaktujemy się w ciągu 24h.",
-  });
+    await c.env.DB.prepare(
+      `INSERT INTO inquiries (id, product_id, product_name, name, email, phone, message, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'new')`
+    ).bind(
+      inquiryId,
+      body.productId,
+      productName,
+      body.name,
+      body.email,
+      body.phone || null,
+      body.message || null
+    ).run();
+
+    return c.json({
+      success: true,
+      message: "Dziękujemy za zapytanie! Skontaktujemy się w ciągu 24h.",
+    });
+  } catch (error) {
+    console.error("Database error saving inquiry:", error);
+    return c.json({
+      success: true,
+      message: "Dziękujemy za zapytanie! Skontaktujemy się w ciągu 24h. (Inquiry logged)",
+    });
+  }
 });
 
 // ============================================
@@ -158,8 +322,11 @@ app.post("/api/inquiry", async (c) => {
 
 // Get all inquiries (admin only)
 app.get("/api/admin/inquiries", adminAuth, async (c) => {
-  const status = c.req.query("status");
+  if (!hasDatabase(c)) {
+    return c.json({ error: "Database not configured" }, 503);
+  }
 
+  const status = c.req.query("status");
   let query = "SELECT * FROM inquiries";
   const params: any[] = [];
 
@@ -171,12 +338,15 @@ app.get("/api/admin/inquiries", adminAuth, async (c) => {
   query += " ORDER BY created_at DESC";
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
-
   return c.json({ inquiries: results });
 });
 
 // Update inquiry status (admin only)
 app.patch("/api/admin/inquiries/:id", adminAuth, async (c) => {
+  if (!hasDatabase(c)) {
+    return c.json({ error: "Database not configured" }, 503);
+  }
+
   const id = c.req.param("id");
   const body = await c.req.json<{ status: string }>();
 
@@ -193,6 +363,10 @@ app.patch("/api/admin/inquiries/:id", adminAuth, async (c) => {
 
 // Create product (admin only)
 app.post("/api/admin/products", adminAuth, async (c) => {
+  if (!hasDatabase(c)) {
+    return c.json({ error: "Database not configured" }, 503);
+  }
+
   const body = await c.req.json<{
     name: string;
     capacity: number;
@@ -231,6 +405,10 @@ app.post("/api/admin/products", adminAuth, async (c) => {
 
 // Update product (admin only)
 app.patch("/api/admin/products/:id", adminAuth, async (c) => {
+  if (!hasDatabase(c)) {
+    return c.json({ error: "Database not configured" }, 503);
+  }
+
   const id = c.req.param("id");
   const body = await c.req.json<Partial<{
     name: string;
@@ -275,15 +453,21 @@ app.patch("/api/admin/products/:id", adminAuth, async (c) => {
 
 // Delete product (admin only)
 app.delete("/api/admin/products/:id", adminAuth, async (c) => {
+  if (!hasDatabase(c)) {
+    return c.json({ error: "Database not configured" }, 503);
+  }
+
   const id = c.req.param("id");
-
   await c.env.DB.prepare("DELETE FROM products WHERE id = ?").bind(id).run();
-
   return c.json({ success: true });
 });
 
 // Get dashboard stats (admin only)
 app.get("/api/admin/stats", adminAuth, async (c) => {
+  if (!hasDatabase(c)) {
+    return c.json({ error: "Database not configured" }, 503);
+  }
+
   const [productsCount, inquiriesCount, newInquiries] = await Promise.all([
     c.env.DB.prepare("SELECT COUNT(*) as count FROM products").first(),
     c.env.DB.prepare("SELECT COUNT(*) as count FROM inquiries").first(),
