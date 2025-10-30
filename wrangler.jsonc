@@ -14,7 +14,7 @@
     {
       "binding": "DB",
       "database_name": "aquatrans-db",
-      "database_id": "placeholder-will-be-created-on-deploy"
+      "database_id": "b0b574d4-2b86-4d14-8fb2-09aa5a43b1b6"
     }
   ],
   "observability": {
